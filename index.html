@@ -28,7 +28,10 @@
             --danger-bg: #fef2f2;
             --danger-text: #dc2626;
         }
-
+			select.filter-box { 
+			outline: none; 
+			appearance: auto; 
+			}
         * {
             box-sizing: border-box;
             margin: 0;
@@ -382,16 +385,18 @@
     </div>
 
     <div class="filters-area">
-        <div class="filter-box">
-            <i class="far fa-calendar-alt"></i>
-            May 14, 2024 - May 21, 2024
-            <i class="fas fa-chevron-down" style="margin-left: 8px; font-size: 12px;"></i>
-        </div>
-        <div class="filter-box">
-            <i class="fas fa-filter"></i>
-            All Statuses
-            <i class="fas fa-chevron-down" style="margin-left: 8px; font-size: 12px;"></i>
-        </div>
+        <select id="dateFilter" class="filter-box" onchange="applyFilters()">
+            <option value="all">All Time</option>
+            <option value="7">Last 7 Days</option>
+            <option value="30">Last 30 Days</option>
+        </select>
+        
+        <select id="statusFilter" class="filter-box" onchange="applyFilters()">
+            <option value="all">All Statuses</option>
+            <option value="completed">Completed (Connected)</option>
+            <option value="failed">Failed / Errors</option>
+            <option value="pending">Pending / Skipped</option>
+        </select>
     </div>
 
     <div class="table-container">
@@ -514,8 +519,10 @@ const REPO_NAME = "YOUR_REPOSITORY_NAME";
 const GITHUB_TOKEN = "YOUR_GITHUB_PERSONAL_ACCESS_TOKEN"; 
 
 // ==========================================
-// 2. DYNAMIC DATA LOADER
+// 2. DYNAMIC DATA LOADER & FILTERS
 // ==========================================
+let globalSheetData = []; // This will hold our data in memory so we can filter it instantly
+
 document.addEventListener("DOMContentLoaded", () => {
     loadDashboardData();
 });
@@ -525,10 +532,14 @@ function loadDashboardData() {
         download: true,
         header: true,
         skipEmptyLines: true,
+        // THE DATE FIX: This removes any invisible spaces from your Google Sheet headers!
+        transformHeader: function(header) {
+            return header.trim();
+        },
         complete: function(results) {
-            const data = results.data;
-            updateStats(data);
-            updateTable(data);
+            globalSheetData = results.data;
+            updateStats(globalSheetData);
+            applyFilters(); // Render the table for the first time
         },
         error: function(err) {
             console.error("Failed to fetch sheet data:", err);
@@ -536,6 +547,37 @@ function loadDashboardData() {
             document.getElementById('statusBox').innerText = "❌ Failed to load live data from Google Sheets.";
         }
     });
+}
+
+function applyFilters() {
+    const statusFilter = document.getElementById('statusFilter').value;
+    const dateFilter = document.getElementById('dateFilter').value;
+
+    let filteredData = globalSheetData.filter(row => {
+        const rawStatus = (row['Status'] || '').toLowerCase();
+        
+        // 1. Check Status Match
+        let matchesStatus = true;
+        if (statusFilter === 'completed' && !rawStatus.includes('connected')) matchesStatus = false;
+        if (statusFilter === 'failed' && !rawStatus.includes('failed') && !rawStatus.includes('error')) matchesStatus = false;
+        if (statusFilter === 'pending' && (rawStatus.includes('connected') || rawStatus.includes('failed'))) matchesStatus = false;
+
+        // 2. Check Date Match
+        let matchesDate = true;
+        if (dateFilter !== 'all' && row['Date Processed']) {
+            const rowDate = new Date(row['Date Processed']);
+            const now = new Date();
+            const diffTime = Math.abs(now - rowDate);
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+            
+            if (dateFilter === '7' && diffDays > 7) matchesDate = false;
+            if (dateFilter === '30' && diffDays > 30) matchesDate = false;
+        }
+
+        return matchesStatus && matchesDate;
+    });
+
+    updateTable(filteredData);
 }
 
 function updateStats(data) {
@@ -551,7 +593,6 @@ function updateStats(data) {
 
     const successRate = total > 0 ? ((processed / total) * 100).toFixed(1) : 0;
 
-    // Update the HTML stat cards
     document.querySelector('.stats-grid .stat-card:nth-child(1) .stat-value').innerText = total.toLocaleString();
     document.querySelector('.stats-grid .stat-card:nth-child(2) .stat-value').innerText = processed.toLocaleString();
     document.querySelector('.stats-grid .stat-card:nth-child(3) .stat-value').innerText = failed.toLocaleString();
@@ -560,17 +601,22 @@ function updateStats(data) {
 
 function updateTable(data) {
     const tbody = document.querySelector('table tbody');
-    tbody.innerHTML = ''; // Clear the hardcoded static rows
+    tbody.innerHTML = ''; 
 
-    // Display the most recent 50 rows (reversing array so newest are at the top)
+    // Display the most recent 50 rows of whatever is filtered
     const recentData = data.slice().reverse().slice(0, 50);
+
+    if (recentData.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="4" style="text-align:center; color:#64748b;">No results match your filters.</td></tr>`;
+        document.querySelector('.pagination-text').innerText = `Showing 0 entries`;
+        return;
+    }
 
     recentData.forEach(row => {
         const url = row['LinkedIn Contact URL'] || 'Unknown URL';
         const rawStatus = row['Status'] || 'Pending';
         const dateStr = row['Date Processed'] || 'Not yet processed';
         
-        // Determine badge styling based on status
         let badgeClass = 'badge-warning';
         let badgeIcon = 'fa-clock';
         let displayStatus = 'Pending';
@@ -590,16 +636,17 @@ function updateTable(data) {
             displayStatus = 'Skipped';
         }
 
-        // Format Date if it exists
+        // Safe Date Formatting
         let formattedDate = dateStr;
         if (dateStr && dateStr !== 'Not yet processed') {
             try {
                 const d = new Date(dateStr);
-                formattedDate = d.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+                if (!isNaN(d.getTime())) {
+                    formattedDate = d.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+                }
             } catch(e) {}
         }
 
-        // Create the table row HTML
         const tr = document.createElement('tr');
         tr.innerHTML = `
             <td>
@@ -615,8 +662,7 @@ function updateTable(data) {
         tbody.appendChild(tr);
     });
 
-    // Update pagination text
-    document.querySelector('.pagination-text').innerText = `Showing 1 to ${recentData.length} of ${data.length} entries`;
+    document.querySelector('.pagination-text').innerText = `Showing 1 to ${recentData.length} of ${data.length} filtered entries`;
 }
 
 // ==========================================
