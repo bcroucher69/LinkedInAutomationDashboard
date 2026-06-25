@@ -385,12 +385,19 @@
     </div>
 
     <div class="filters-area">
-        <select id="dateFilter" class="filter-box" onchange="applyFilters()">
+        <select id="dateFilter" class="filter-box" onchange="toggleCustomDate(); applyFilters()">
             <option value="all">All Time</option>
             <option value="7">Last 7 Days</option>
             <option value="30">Last 30 Days</option>
+            <option value="custom">Custom Range...</option>
         </select>
         
+        <div id="customDateContainer" style="display: none; align-items: center; gap: 8px;">
+            <input type="date" id="customStartDate" class="filter-box" onchange="applyFilters()">
+            <span style="color: var(--text-muted); font-size: 14px; font-weight: 500;">to</span>
+            <input type="date" id="customEndDate" class="filter-box" onchange="applyFilters()">
+        </div>
+
         <select id="statusFilter" class="filter-box" onchange="applyFilters()">
             <option value="all">All Statuses</option>
             <option value="completed">Completed (Connected)</option>
@@ -549,6 +556,19 @@ function loadDashboardData() {
     });
 }
 
+function toggleCustomDate() {
+    const dateFilter = document.getElementById('dateFilter').value;
+    const customContainer = document.getElementById('customDateContainer');
+    if (dateFilter === 'custom') {
+        customContainer.style.display = 'flex';
+    } else {
+        customContainer.style.display = 'none';
+        // Clear custom inputs when switching away so they don't ghost-filter
+        document.getElementById('customStartDate').value = '';
+        document.getElementById('customEndDate').value = '';
+    }
+}
+
 function applyFilters() {
     const statusFilter = document.getElementById('statusFilter').value;
     const dateFilter = document.getElementById('dateFilter').value;
@@ -566,37 +586,35 @@ function applyFilters() {
         let matchesDate = true;
         if (dateFilter !== 'all' && row['Date Processed']) {
             const rowDate = new Date(row['Date Processed']);
-            const now = new Date();
-            const diffTime = Math.abs(now - rowDate);
-            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
             
-            if (dateFilter === '7' && diffDays > 7) matchesDate = false;
-            if (dateFilter === '30' && diffDays > 30) matchesDate = false;
+            if (dateFilter === '7' || dateFilter === '30') {
+                const now = new Date();
+                const diffTime = Math.abs(now - rowDate);
+                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+                if (dateFilter === '7' && diffDays > 7) matchesDate = false;
+                if (dateFilter === '30' && diffDays > 30) matchesDate = false;
+            } 
+            else if (dateFilter === 'custom') {
+                const startVal = document.getElementById('customStartDate').value;
+                const endVal = document.getElementById('customEndDate').value;
+                
+                if (startVal) {
+                    const startDate = new Date(startVal);
+                    startDate.setUTCHours(0, 0, 0, 0); // Start of day UTC
+                    if (rowDate < startDate) matchesDate = false;
+                }
+                if (endVal) {
+                    const endDate = new Date(endVal);
+                    endDate.setUTCHours(23, 59, 59, 999); // End of day UTC
+                    if (rowDate > endDate) matchesDate = false;
+                }
+            }
         }
 
         return matchesStatus && matchesDate;
     });
 
     updateTable(filteredData);
-}
-
-function updateStats(data) {
-    let total = data.length;
-    let processed = 0;
-    let failed = 0;
-
-    data.forEach(row => {
-        const status = (row['Status'] || '').toLowerCase();
-        if (status.includes('connected')) processed++;
-        if (status.includes('failed')) failed++;
-    });
-
-    const successRate = total > 0 ? ((processed / total) * 100).toFixed(1) : 0;
-
-    document.querySelector('.stats-grid .stat-card:nth-child(1) .stat-value').innerText = total.toLocaleString();
-    document.querySelector('.stats-grid .stat-card:nth-child(2) .stat-value').innerText = processed.toLocaleString();
-    document.querySelector('.stats-grid .stat-card:nth-child(3) .stat-value').innerText = failed.toLocaleString();
-    document.querySelector('.stats-grid .stat-card:nth-child(4) .stat-value').innerText = `${successRate}%`;
 }
 
 function updateTable(data) {
@@ -636,13 +654,22 @@ function updateTable(data) {
             displayStatus = 'Skipped';
         }
 
-        // Safe Date Formatting
+        // Exact UTC Date Formatting (Bypasses local timezone shift)
         let formattedDate = dateStr;
         if (dateStr && dateStr !== 'Not yet processed') {
             try {
                 const d = new Date(dateStr);
                 if (!isNaN(d.getTime())) {
-                    formattedDate = d.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+                    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                    const month = months[d.getUTCMonth()];
+                    const day = d.getUTCDate();
+                    const year = d.getUTCFullYear();
+                    
+                    // Force 2 digits for hours and minutes (e.g., 09:05)
+                    const hours = String(d.getUTCHours()).padStart(2, '0');
+                    const minutes = String(d.getUTCMinutes()).padStart(2, '0');
+                    
+                    formattedDate = `${month} ${day}, ${year}, ${hours}:${minutes} UTC`;
                 }
             } catch(e) {}
         }
