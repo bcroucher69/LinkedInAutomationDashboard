@@ -352,8 +352,8 @@
                 <div class="stat-icon icon-blue"><i class="fas fa-users"></i></div>
                 Total Contacts
             </div>
-            <div class="stat-value">-</div>
-            <div class="stat-footer">All time</div>
+            <div class="stat-value" id="statTotal">-</div>
+            <div class="stat-footer">Filtered total</div>
         </div>
         
         <div class="stat-card">
@@ -361,8 +361,8 @@
                 <div class="stat-icon icon-green"><i class="fas fa-check-circle"></i></div>
                 Processed
             </div>
-            <div class="stat-value">-</div>
-            <div class="stat-footer">Total executions</div>
+            <div class="stat-value" id="statProcessed">-</div>
+            <div class="stat-footer">Connected successfully</div>
         </div>
 
         <div class="stat-card">
@@ -370,7 +370,7 @@
                 <div class="stat-icon icon-red"><i class="fas fa-times-circle"></i></div>
                 Failed
             </div>
-            <div class="stat-value">-</div>
+            <div class="stat-value" id="statFailed">-</div>
             <div class="stat-footer">Errors or limits hit</div>
         </div>
 
@@ -379,8 +379,8 @@
                 <div class="stat-icon icon-purple"><i class="fas fa-chart-line"></i></div>
                 Success Rate
             </div>
-            <div class="stat-value">-</div>
-            <div class="stat-footer">Overall completion</div>
+            <div class="stat-value" id="statRate">-</div>
+            <div class="stat-footer">Of attempted</div>
         </div>
     </div>
 
@@ -456,7 +456,7 @@ const GITHUB_TOKEN = "YOUR_GITHUB_PERSONAL_ACCESS_TOKEN";
 // ==========================================
 // 2. DYNAMIC DATA LOADER & FILTERS
 // ==========================================
-let globalSheetData = []; // This will hold our data in memory so we can filter it instantly
+let globalSheetData = []; 
 
 document.addEventListener("DOMContentLoaded", () => {
     loadDashboardData();
@@ -467,14 +467,12 @@ function loadDashboardData() {
         download: true,
         header: true,
         skipEmptyLines: true,
-        // THE DATE FIX: This removes any invisible spaces from your Google Sheet headers!
         transformHeader: function(header) {
             return header.trim();
         },
         complete: function(results) {
             globalSheetData = results.data;
-            updateStats(globalSheetData);
-            applyFilters(); // Render the table for the first time
+            applyFilters(); 
         },
         error: function(err) {
             console.error("Failed to fetch sheet data:", err);
@@ -491,7 +489,6 @@ function toggleCustomDate() {
         customContainer.style.display = 'flex';
     } else {
         customContainer.style.display = 'none';
-        // Clear custom inputs when switching away so they don't ghost-filter
         document.getElementById('customStartDate').value = '';
         document.getElementById('customEndDate').value = '';
     }
@@ -504,13 +501,11 @@ function applyFilters() {
     let filteredData = globalSheetData.filter(row => {
         const rawStatus = (row['Status'] || '').toLowerCase();
         
-        // 1. Check Status Match
         let matchesStatus = true;
         if (statusFilter === 'completed' && !rawStatus.includes('connected')) matchesStatus = false;
         if (statusFilter === 'failed' && !rawStatus.includes('failed') && !rawStatus.includes('error')) matchesStatus = false;
         if (statusFilter === 'pending' && (rawStatus.includes('connected') || rawStatus.includes('failed'))) matchesStatus = false;
 
-        // 2. Check Date Match
         let matchesDate = true;
         if (dateFilter !== 'all' && row['Date Processed']) {
             const rowDate = new Date(row['Date Processed']);
@@ -528,32 +523,51 @@ function applyFilters() {
                 
                 if (startVal) {
                     const startDate = new Date(startVal);
-                    startDate.setUTCHours(0, 0, 0, 0); // Start of day UTC
+                    startDate.setUTCHours(0, 0, 0, 0); 
                     if (rowDate < startDate) matchesDate = false;
                 }
                 if (endVal) {
                     const endDate = new Date(endVal);
-                    endDate.setUTCHours(23, 59, 59, 999); // End of day UTC
+                    endDate.setUTCHours(23, 59, 59, 999); 
                     if (rowDate > endDate) matchesDate = false;
                 }
             }
         }
-
         return matchesStatus && matchesDate;
     });
 
+    updateStats(filteredData);
     updateTable(filteredData);
+}
+
+function updateStats(data) {
+    let total = data.length;
+    let processed = 0;
+    let failed = 0;
+
+    data.forEach(row => {
+        const status = (row['Status'] || '').toLowerCase();
+        if (status.includes('connected')) processed++;
+        if (status.includes('failed') || status.includes('error')) failed++;
+    });
+
+    let attempted = processed + failed;
+    const successRate = attempted > 0 ? ((processed / attempted) * 100).toFixed(1) : 0;
+
+    document.getElementById('statTotal').innerText = total.toLocaleString();
+    document.getElementById('statProcessed').innerText = processed.toLocaleString();
+    document.getElementById('statFailed').innerText = failed.toLocaleString();
+    document.getElementById('statRate').innerText = `${successRate}%`;
 }
 
 function updateTable(data) {
     const tbody = document.querySelector('table tbody');
     tbody.innerHTML = ''; 
 
-    // Display the most recent 50 rows of whatever is filtered
     const recentData = data.slice().reverse().slice(0, 50);
 
     if (recentData.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="4" style="text-align:center; color:#64748b;">No results match your filters.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="4" style="text-align:center; padding: 40px; color:#64748b;">No results match your filters.</td></tr>`;
         document.querySelector('.pagination-text').innerText = `Showing 0 entries`;
         return;
     }
@@ -582,7 +596,6 @@ function updateTable(data) {
             displayStatus = 'Skipped';
         }
 
-        // Exact UTC Date Formatting (Bypasses local timezone shift)
         let formattedDate = dateStr;
         if (dateStr && dateStr !== 'Not yet processed') {
             try {
@@ -593,7 +606,6 @@ function updateTable(data) {
                     const day = d.getUTCDate();
                     const year = d.getUTCFullYear();
                     
-                    // Force 2 digits for hours and minutes (e.g., 09:05)
                     const hours = String(d.getUTCHours()).padStart(2, '0');
                     const minutes = String(d.getUTCMinutes()).padStart(2, '0');
                     
