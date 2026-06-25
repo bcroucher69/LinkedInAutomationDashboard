@@ -1,0 +1,35 @@
+name: Run LinkedIn Outreach Pipeline
+
+# This listens for the exact signal your dashboard button sends
+on:
+  repository_dispatch:
+    types: [launch_outreach] 
+
+jobs:
+  outreach:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # Assumes your package.json is in the root of your repo
+      - name: Install Dependencies
+        run: npm install
+
+      - name: Install Playwright Chromium Browser
+        run: npx playwright install chromium --with-deps
+
+      - name: Execute Cloud Automation
+        run: npx playwright test
+        env:
+          # Pulls your secure keys from GitHub Secrets so they aren't public
+          LINKEDIN_LI_AT: ${{ secrets.LINKEDIN_LI_AT }}
+          LINKEDIN_JSESSIONID: ${{ secrets.LINKEDIN_JSESSIONID }}
+          GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
+          GOOGLE_SERVICE_ACCOUNT_EMAIL: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_EMAIL }}
+          GOOGLE_PRIVATE_KEY: ${{ secrets.GOOGLE_PRIVATE_KEY }}
