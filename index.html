@@ -377,9 +377,12 @@
         </div>
         
         <div class="header-actions">
-            <button class="btn-secondary" id="btnScrape" onclick="triggerScraperPipeline()">
-                <i class="fas fa-user-plus"></i> Scrape Profiles
-            </button>
+            <div style="display: flex; gap: 8px; align-items: center;">
+                <input type="text" id="scrapeCity" class="filter-box" placeholder="Target City (e.g., Miami)" style="width: 200px; margin-bottom: 0;">
+                <button class="btn-secondary" id="btnScrape" onclick="triggerScraperPipeline()">
+                    <i class="fas fa-user-plus"></i> Scrape Profiles
+                </button>
+            </div>
             
             <button class="btn-primary" id="btnLaunch" onclick="triggerCloudPipeline()">
                 <i class="fas fa-cloud-upload-alt"></i> Launch Cloud Outreach
@@ -711,28 +714,37 @@ async function triggerCloudPipeline() {
 }
 
 // ==========================================
-// 4. SCRAPER TRIGGER (n8n WEBHOOK)
+// 4. SCRAPER TRIGGER (DYNAMIC WEBHOOK)
 // ==========================================
 async function triggerScraperPipeline() {
     const SCRAPER_WEBHOOK_URL = "https://sa1.altametrics.com/webhook/c951321d-9324-4890-83cf-b780286018c8";
     
+    // Grab the city from the input box (defaults to Los Angeles if you leave it blank)
+    const cityInput = document.getElementById('scrapeCity').value.trim() || "Los Angeles";
+    
     const btn = document.getElementById('btnScrape');
     const originalBtnHTML = btn.innerHTML;
-    btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Scraping Live...`;
+    btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Scraping ${cityInput}...`;
     btn.disabled = true;
 
     const statusBox = document.getElementById('statusBox');
     statusBox.style.display = "block";
     statusBox.style.background = "#f3e8ff"; 
     statusBox.style.color = "#6b21a8";
-    statusBox.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Sending ignition signal to Scraper...`;
+    statusBox.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Searching ${cityInput} for new profiles...`;
 
     try {
-        const response = await fetch(SCRAPER_WEBHOOK_URL, { method: "POST" });
+        const response = await fetch(SCRAPER_WEBHOOK_URL, { 
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            // Securely package the city name to send to n8n
+            body: JSON.stringify({ city: cityInput })
+        });
 
         if (response.ok) {
-            statusBox.innerHTML = `<i class="fas fa-sync fa-spin"></i> <strong>Scraper Started!</strong> Watching for new profiles to drop into the sheet...`;
-            // Hand off to the Live Poller instead of resetting the button
+            statusBox.innerHTML = `<i class="fas fa-sync fa-spin"></i> <strong>Scraper Started!</strong> Watching for new ${cityInput} profiles to drop into the sheet...`;
             startLivePolling('btnScrape', originalBtnHTML, 'scrape');
         } else {
             throw new Error(`Webhook failed with status: ${response.status}`);
