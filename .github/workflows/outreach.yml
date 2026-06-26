@@ -1,9 +1,8 @@
 name: Run LinkedIn Outreach Pipeline
 
-# This listens for the exact signal your dashboard button sends
+# This tells GitHub to display the "Run workflow" button!
 on:
-  repository_dispatch:
-    types: [launch_outreach] 
+  workflow_dispatch:
 
 jobs:
   outreach:
