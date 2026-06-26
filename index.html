@@ -675,30 +675,29 @@ function updateTable(data) {
 }
 
 // ==========================================
-// 3. GITHUB ACTIONS TRIGGER (n8n WEBHOOK RELAY)
+// 3. GITHUB ACTIONS TRIGGER (OUTREACH)
 // ==========================================
 async function triggerCloudPipeline() {
     const N8N_WEBHOOK_URL = "https://sa1.altametrics.com/webhook/launch-outreach";
     
-    // 1. Grab the button and change it to a loading state
     const btn = document.getElementById('btnLaunch');
     const originalBtnHTML = btn.innerHTML;
-    btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Launching...`;
+    btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Launching & Syncing...`;
     btn.disabled = true;
 
     const statusBox = document.getElementById('statusBox');
     statusBox.style.display = "block";
     statusBox.style.background = "#e1f5fe";
     statusBox.style.color = "#0288d1";
-    statusBox.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Sending ignition signal to n8n relay...`;
+    statusBox.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Sending ignition signal to cloud...`;
 
     try {
         const response = await fetch(N8N_WEBHOOK_URL, { method: "POST" });
 
         if (response.ok) {
-            statusBox.style.background = "#e8f5e9";
-            statusBox.style.color = "#2e7d32";
-            statusBox.innerHTML = "<strong>✅ Success!</strong> Pipeline triggered. GitHub is now running your automation in the background.";
+            statusBox.innerHTML = `<i class="fas fa-sync fa-spin"></i> <strong>Signal Sent!</strong> Automation is running. Updating your dashboard live...`;
+            // Hand off to the Live Poller instead of resetting the button
+            startLivePolling('btnLaunch', originalBtnHTML, 'outreach');
         } else {
             throw new Error(`Webhook failed with status: ${response.status}`);
         }
@@ -706,8 +705,6 @@ async function triggerCloudPipeline() {
         statusBox.style.background = "#ffebee";
         statusBox.style.color = "#c62828";
         statusBox.innerHTML = `<strong>❌ Failed to trigger pipeline:</strong> ${err.message}`;
-    } finally {
-        // 2. Restore the button back to normal when finished
         btn.innerHTML = originalBtnHTML;
         btn.disabled = false;
     }
@@ -719,25 +716,24 @@ async function triggerCloudPipeline() {
 async function triggerScraperPipeline() {
     const SCRAPER_WEBHOOK_URL = "https://sa1.altametrics.com/webhook/c951321d-9324-4890-83cf-b780286018c8";
     
-    // 1. Grab the button and change it to a loading state
     const btn = document.getElementById('btnScrape');
     const originalBtnHTML = btn.innerHTML;
-    btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Scraping...`;
+    btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Scraping Live...`;
     btn.disabled = true;
 
     const statusBox = document.getElementById('statusBox');
     statusBox.style.display = "block";
     statusBox.style.background = "#f3e8ff"; 
     statusBox.style.color = "#6b21a8";
-    statusBox.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Sending ignition signal to Scraper workflow...`;
+    statusBox.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Sending ignition signal to Scraper...`;
 
     try {
         const response = await fetch(SCRAPER_WEBHOOK_URL, { method: "POST" });
 
         if (response.ok) {
-            statusBox.style.background = "#e8f5e9";
-            statusBox.style.color = "#2e7d32";
-            statusBox.innerHTML = "<strong>✅ Success!</strong> Scraper triggered. New profiles will appear in your Google Sheet shortly.";
+            statusBox.innerHTML = `<i class="fas fa-sync fa-spin"></i> <strong>Scraper Started!</strong> Watching for new profiles to drop into the sheet...`;
+            // Hand off to the Live Poller instead of resetting the button
+            startLivePolling('btnScrape', originalBtnHTML, 'scrape');
         } else {
             throw new Error(`Webhook failed with status: ${response.status}`);
         }
@@ -745,12 +741,88 @@ async function triggerScraperPipeline() {
         statusBox.style.background = "#ffebee";
         statusBox.style.color = "#c62828";
         statusBox.innerHTML = `<strong>❌ Failed to trigger scraper:</strong> ${err.message}`;
-    } finally {
-        // 2. Restore the button back to normal when finished
         btn.innerHTML = originalBtnHTML;
         btn.disabled = false;
     }
 }
+
+// ==========================================
+// 5. LIVE DATA POLLER (AUTO-REFRESH)
+// ==========================================
+let activePollInterval = null;
+
+function startLivePolling(buttonId, originalBtnHTML, jobType) {
+    // Clear any existing pollers just in case
+    if (activePollInterval) clearInterval(activePollInterval);
+
+    let stableCount = 0;
+    let lastRowCount = globalSheetData.length;
+
+    // Check the Google Sheet every 10 seconds silently
+    activePollInterval = setInterval(() => {
+        Papa.parse(SHEET_CSV_URL, {
+            download: true,
+            header: true,
+            skipEmptyLines: true,
+            transformHeader: function(header) { return header.trim(); },
+            complete: function(results) {
+                const newData = results.data;
+                globalSheetData = newData;
+                applyFilters(); // Magically updates the UI with the fresh data
+
+                let isJobFinished = false;
+
+                if (jobType === 'outreach') {
+                    // It is finished if NO rows are left as "Pending" (blank status)
+                    const pendingCount = newData.filter(row => {
+                        const s = (row['Status'] || '').toLowerCase();
+                        return s === '' || s.includes('pending');
+                    }).length;
+                    
+                    if (pendingCount === 0) isJobFinished = true;
+                } 
+                else if (jobType === 'scrape') {
+                    // It is finished if the total number of rows hasn't increased in 30 seconds
+                    if (newData.length === lastRowCount) {
+                        stableCount++;
+                        if (stableCount >= 3) isJobFinished = true;
+                    } else {
+                        stableCount = 0; // Reset counter because it found new rows!
+                        lastRowCount = newData.length;
+                    }
+                }
+
+                if (isJobFinished) {
+                    stopLivePolling(buttonId, originalBtnHTML);
+                }
+            }
+        });
+    }, 10000); // 10,000 milliseconds = 10 seconds
+}
+
+function stopLivePolling(buttonId, originalBtnHTML) {
+    clearInterval(activePollInterval);
+    activePollInterval = null;
+
+    // Unlock the button
+    const btn = document.getElementById(buttonId);
+    if (btn) {
+        btn.innerHTML = originalBtnHTML;
+        btn.disabled = false;
+    }
+
+    // Show final success banner
+    const statusBox = document.getElementById('statusBox');
+    statusBox.style.background = "#e8f5e9";
+    statusBox.style.color = "#2e7d32";
+    statusBox.innerHTML = `<strong>✅ Task Complete!</strong> Your live data is fully updated.`;
+    
+    // Hide the banner after 5 seconds to keep the dashboard clean
+    setTimeout(() => {
+        statusBox.style.display = "none";
+    }, 5000);
+}
+</script>
 
 </script>
 
