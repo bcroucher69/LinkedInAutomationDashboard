@@ -16,9 +16,10 @@ jobs:
         with:
           node-version: '20'
 
-      # Assumes your package.json is in the root of your repo
       - name: Install Dependencies
-        run: npm install
+        run: |
+          npm init -y
+          npm install @playwright/test google-spreadsheet google-auth-library typescript @types/node
 
       - name: Install Playwright Chromium Browser
         run: npx playwright install chromium --with-deps
