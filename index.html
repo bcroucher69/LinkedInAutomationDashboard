@@ -106,6 +106,31 @@
 
         .btn-primary:hover {
             background-color: var(--primary-hover);
+			.btn-secondary {
+            background-color: #ffffff;
+            color: var(--text-main);
+            border: 1px solid var(--border-color);
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.2s;
+            box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+        }
+
+        .btn-secondary:hover {
+            background-color: #f8fafc;
+            border-color: #cbd5e1;
+        }
+        
+        .header-actions {
+            display: flex;
+            gap: 12px;
+        }
         }
 
         /* --- Stat Cards --- */
@@ -339,9 +364,15 @@
                 <p>Automate and scale your LinkedIn outreach with ease.</p>
             </div>
         </div>
-        <button class="btn-primary" onclick="triggerCloudPipeline()">
-            <i class="fas fa-cloud-upload-alt"></i> Launch Cloud Outreach
-        </button>
+        <div class="header-actions">
+            <button class="btn-secondary" onclick="triggerScraperPipeline()">
+                <i class="fas fa-user-plus"></i> Scrape Profiles
+            </button>
+            
+            <button class="btn-primary" onclick="triggerCloudPipeline()">
+                <i class="fas fa-cloud-upload-alt"></i> Launch Cloud Outreach
+            </button>
+        </div>
     </div>
 
     <div id="statusBox"></div>
@@ -663,6 +694,37 @@ async function triggerCloudPipeline() {
         statusBox.innerHTML = `<strong>❌ Failed to trigger pipeline:</strong> ${err.message}`;
     }
 }
+// ==========================================
+// 4. SCRAPER TRIGGER (n8n WEBHOOK)
+// ==========================================
+async function triggerScraperPipeline() {
+    const SCRAPER_WEBHOOK_URL = "https://sa1.altametrics.com/webhook/c951321d-9324-4890-83cf-b780286018c8";
+    
+    const statusBox = document.getElementById('statusBox');
+    statusBox.style.display = "block";
+    statusBox.style.background = "#f3e8ff"; 
+    statusBox.style.color = "#6b21a8";
+    statusBox.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Sending ignition signal to Scraper workflow...`;
+
+    try {
+        const response = await fetch(SCRAPER_WEBHOOK_URL, {
+            method: "POST" 
+        });
+
+        if (response.ok) {
+            statusBox.style.background = "#e8f5e9";
+            statusBox.style.color = "#2e7d32";
+            statusBox.innerHTML = "<strong>✅ Success!</strong> Scraper triggered. New profiles will appear in your Google Sheet shortly.";
+        } else {
+            throw new Error(`Webhook failed with status: ${response.status}`);
+        }
+    } catch (err) {
+        statusBox.style.background = "#ffebee";
+        statusBox.style.color = "#c62828";
+        statusBox.innerHTML = `<strong>❌ Failed to trigger scraper:</strong> ${err.message}`;
+    }
+}
+
 </script>
 
 </body>
