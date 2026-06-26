@@ -106,7 +106,16 @@
 
         .btn-primary:hover {
             background-color: var(--primary-hover);
-			.btn-secondary {
+        }
+
+        /* --- Secondary Button & Header Actions --- */
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .btn-secondary {
             background-color: #ffffff;
             color: var(--text-main);
             border: 1px solid var(--border-color);
@@ -126,12 +135,8 @@
             background-color: #f8fafc;
             border-color: #cbd5e1;
         }
-        
-        .header-actions {
-            display: flex;
-            gap: 12px;
-        }
-        }
+
+        /* --- Stat Cards --- */
 
         /* --- Stat Cards --- */
         .stats-grid {
@@ -364,6 +369,8 @@
                 <p>Automate and scale your LinkedIn outreach with ease.</p>
             </div>
         </div>
+        
+        <!-- Both buttons MUST be inside this wrapper to sit side-by-side -->
         <div class="header-actions">
             <button class="btn-secondary" onclick="triggerScraperPipeline()">
                 <i class="fas fa-user-plus"></i> Scrape Profiles
