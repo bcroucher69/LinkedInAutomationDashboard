@@ -377,12 +377,9 @@
         </div>
         
         <div class="header-actions">
-            <div style="display: flex; gap: 8px; align-items: center;">
-                <input type="text" id="scrapeCity" class="filter-box" placeholder="Target City (e.g., Miami)" style="width: 200px; margin-bottom: 0;">
-                <button class="btn-secondary" id="btnScrape" onclick="triggerScraperPipeline()">
-                    <i class="fas fa-user-plus"></i> Scrape Profiles
-                </button>
-            </div>
+            <button class="btn-secondary" id="btnScrape" onclick="triggerScraperPipeline()">
+                <i class="fas fa-user-plus"></i> Scrape Profiles
+            </button>
             
             <button class="btn-primary" id="btnLaunch" onclick="triggerCloudPipeline()">
                 <i class="fas fa-cloud-upload-alt"></i> Launch Cloud Outreach
@@ -708,13 +705,18 @@ async function triggerCloudPipeline() {
 }
 
 // ==========================================
-// 4. SCRAPER TRIGGER (DYNAMIC WEBHOOK)
+// 4. SCRAPER TRIGGER (WITH POPUP)
 // ==========================================
 async function triggerScraperPipeline() {
     const SCRAPER_WEBHOOK_URL = "https://sa1.altametrics.com/webhook/c951321d-9324-4890-83cf-b780286018c8";
     
-    // Grab the city from the input box (defaults to Los Angeles if you leave it blank)
-    const cityInput = document.getElementById('scrapeCity').value.trim() || "Los Angeles";
+    // 1. THE POPUP: Ask for the city right when they click
+    const userPrompt = prompt("Enter Target City (e.g., Chicago, Miami, Dallas):", "Los Angeles");
+    
+    // 2. SAFETY CHECK: If they click 'Cancel' on the popup, just abort silently
+    if (userPrompt === null) return;
+    
+    const cityInput = userPrompt.trim() || "Los Angeles";
     
     const btn = document.getElementById('btnScrape');
     const originalBtnHTML = btn.innerHTML;
@@ -730,15 +732,12 @@ async function triggerScraperPipeline() {
     try {
         const response = await fetch(SCRAPER_WEBHOOK_URL, { 
             method: "POST",
-            headers: {
-                "Content-Type": "application/json"
-            },
-            // Securely package the city name to send to n8n
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ city: cityInput })
         });
 
         if (response.ok) {
-            statusBox.innerHTML = `<i class="fas fa-sync fa-spin"></i> <strong>Scraper Started!</strong> Watching for new ${cityInput} profiles to drop into the sheet...`;
+            statusBox.innerHTML = `<i class="fas fa-sync fa-spin"></i> <strong>Scraper Started!</strong> Watching for new ${cityInput} profiles...`;
             startLivePolling('btnScrape', originalBtnHTML, 'scrape');
         } else {
             throw new Error(`Webhook failed with status: ${response.status}`);
@@ -753,7 +752,7 @@ async function triggerScraperPipeline() {
 }
 
 // ==========================================
-// 5. LIVE DATA POLLER (API DRIVEN)
+// 5. LIVE DATA POLLER (SNAP RESPONSE)
 // ==========================================
 let activePollInterval = null;
 
@@ -762,11 +761,9 @@ function startLivePolling(buttonId, originalBtnHTML, jobType) {
 
     let stableCount = 0;
     let lastRowCount = globalSheetData.length;
-    let hasDetectedChange = false; 
 
     activePollInterval = setInterval(async () => {
         try {
-            // Because we use an API now, there is zero browser caching of the Google Sheet!
             const response = await fetch(N8N_DATA_API_URL);
             if (!response.ok) return;
 
@@ -786,16 +783,13 @@ function startLivePolling(buttonId, originalBtnHTML, jobType) {
                 if (pendingCount === 0) isJobFinished = true;
             } 
             else if (jobType === 'scrape') {
+                // THE FIX: The exact second the row count jumps up, the job is done!
                 if (newData.length > lastRowCount) {
-                    hasDetectedChange = true;
-                    stableCount = 0; 
-                    lastRowCount = newData.length;
-                } else if (hasDetectedChange && newData.length === lastRowCount) {
+                    isJobFinished = true; 
+                } else {
+                    // If no new rows yet, keep waiting (Timeout fallback after 60 seconds)
                     stableCount++;
-                    if (stableCount >= 3) isJobFinished = true; 
-                } else if (!hasDetectedChange) {
-                    stableCount++;
-                    if (stableCount >= 18) isJobFinished = true; 
+                    if (stableCount >= 6) isJobFinished = true; 
                 }
             }
 
@@ -805,7 +799,7 @@ function startLivePolling(buttonId, originalBtnHTML, jobType) {
         } catch (err) {
             console.warn("Live poll skipped a beat. Will try again in 10s.");
         }
-    }, 10000); 
+    }, 10000); // Checks every 10 seconds
 }
 
 function stopLivePolling(buttonId, originalBtnHTML) {
