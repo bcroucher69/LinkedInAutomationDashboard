@@ -498,7 +498,13 @@ const N8N_DATA_API_URL = "https://sa1.altametrics.com/webhook/get-linkedin-data"
 let globalSheetData = []; 
 
 document.addEventListener("DOMContentLoaded", () => {
-    loadDashboardData();
+    loadDashboardData(); // Initial load
+    
+    // THE HEARTBEAT: Auto-refresh the dashboard every 60 seconds (60000 ms)
+    setInterval(() => {
+        console.log("Auto-refreshing live data...");
+        loadDashboardData();
+    }, 60000);
 });
 
 async function loadDashboardData() {
@@ -666,17 +672,15 @@ function updateTable(data) {
     document.querySelector('.pagination-text').innerText = `Showing 1 to ${recentData.length} of ${data.length} filtered entries`;
 }
 
-// NOTE: SECTION 3 AND 4 GO HERE (Keep your existing triggerCloudPipeline and triggerScraperPipeline functions)
-
 // ==========================================
-// 3. GITHUB ACTIONS TRIGGER (OUTREACH)
+// 3. GITHUB ACTIONS TRIGGER (FIRE & FORGET)
 // ==========================================
 async function triggerCloudPipeline() {
     const N8N_WEBHOOK_URL = "https://sa1.altametrics.com/webhook/launch-outreach";
     
     const btn = document.getElementById('btnLaunch');
     const originalBtnHTML = btn.innerHTML;
-    btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Launching & Syncing...`;
+    btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Launching...`;
     btn.disabled = true;
 
     const statusBox = document.getElementById('statusBox');
@@ -689,45 +693,47 @@ async function triggerCloudPipeline() {
         const response = await fetch(N8N_WEBHOOK_URL, { method: "POST" });
 
         if (response.ok) {
-            statusBox.innerHTML = `<i class="fas fa-sync fa-spin"></i> <strong>Signal Sent!</strong> Automation is running. Updating your dashboard live...`;
-            // Hand off to the Live Poller instead of resetting the button
-            startLivePolling('btnLaunch', originalBtnHTML, 'outreach');
+            statusBox.style.background = "#e8f5e9";
+            statusBox.style.color = "#2e7d32";
+            statusBox.innerHTML = `<strong>✅ Outreach Started!</strong> Playwright is running in the cloud. Dashboard will auto-update every 60 seconds.`;
         } else {
-            throw new Error(`Webhook failed with status: ${response.status}`);
+            throw new Error(`Webhook failed: ${response.status}`);
         }
     } catch (err) {
         statusBox.style.background = "#ffebee";
         statusBox.style.color = "#c62828";
         statusBox.innerHTML = `<strong>❌ Failed to trigger pipeline:</strong> ${err.message}`;
+    } finally {
+        // Unlock button instantly
         btn.innerHTML = originalBtnHTML;
         btn.disabled = false;
+        
+        // Hide the banner after 8 seconds
+        setTimeout(() => { statusBox.style.display = "none"; }, 8000);
     }
 }
 
 // ==========================================
-// 4. SCRAPER TRIGGER (WITH POPUP)
+// 4. SCRAPER TRIGGER (FIRE & FORGET)
 // ==========================================
 async function triggerScraperPipeline() {
     const SCRAPER_WEBHOOK_URL = "https://sa1.altametrics.com/webhook/c951321d-9324-4890-83cf-b780286018c8";
     
-    // 1. THE POPUP: Ask for the city right when they click
     const userPrompt = prompt("Enter Target City (e.g., Chicago, Miami, Dallas):", "Los Angeles");
-    
-    // 2. SAFETY CHECK: If they click 'Cancel' on the popup, just abort silently
     if (userPrompt === null) return;
     
     const cityInput = userPrompt.trim() || "Los Angeles";
     
     const btn = document.getElementById('btnScrape');
     const originalBtnHTML = btn.innerHTML;
-    btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Scraping ${cityInput}...`;
+    btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Sending...`;
     btn.disabled = true;
 
     const statusBox = document.getElementById('statusBox');
     statusBox.style.display = "block";
     statusBox.style.background = "#f3e8ff"; 
     statusBox.style.color = "#6b21a8";
-    statusBox.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Searching ${cityInput} for new profiles...`;
+    statusBox.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Sending target city to Scraper...`;
 
     try {
         const response = await fetch(SCRAPER_WEBHOOK_URL, { 
@@ -737,17 +743,26 @@ async function triggerScraperPipeline() {
         });
 
         if (response.ok) {
-            statusBox.innerHTML = `<i class="fas fa-sync fa-spin"></i> <strong>Scraper Started!</strong> Watching for new ${cityInput} profiles...`;
-            startLivePolling('btnScrape', originalBtnHTML, 'scrape');
+            statusBox.style.background = "#e8f5e9";
+            statusBox.style.color = "#2e7d32";
+            statusBox.innerHTML = `<strong>✅ Scraper Started!</strong> Fetching ${cityInput} profiles. Dashboard will auto-update every 60 seconds.`;
+            
+            // Force one immediate data refresh just in case the scrape was incredibly fast
+            setTimeout(loadDashboardData, 3000);
         } else {
-            throw new Error(`Webhook failed with status: ${response.status}`);
+            throw new Error(`Webhook failed: ${response.status}`);
         }
     } catch (err) {
         statusBox.style.background = "#ffebee";
         statusBox.style.color = "#c62828";
         statusBox.innerHTML = `<strong>❌ Failed to trigger scraper:</strong> ${err.message}`;
+    } finally {
+        // Unlock button instantly
         btn.innerHTML = originalBtnHTML;
         btn.disabled = false;
+        
+        // Hide the banner after 8 seconds
+        setTimeout(() => { statusBox.style.display = "none"; }, 8000);
     }
 }
 
@@ -819,8 +834,6 @@ function stopLivePolling(buttonId, originalBtnHTML) {
     
     setTimeout(() => { statusBox.style.display = "none"; }, 5000);
 }
-</script>
-
 </script>
 
 </body>
