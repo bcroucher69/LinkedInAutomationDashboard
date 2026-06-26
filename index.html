@@ -512,8 +512,18 @@ async function loadDashboardData() {
         const response = await fetch(N8N_DATA_API_URL);
         if (!response.ok) throw new Error("API Network response was not ok");
         
-        const data = await response.json();
-        globalSheetData = data;
+        const rawData = await response.json();
+        
+        // THE FIX: Sanitize the data to remove hidden spaces/newlines from Google Sheets headers
+        globalSheetData = rawData.map(row => {
+            const cleanedRow = {};
+            for (let key in row) {
+                // This strips spaces/newlines off the header names
+                cleanedRow[key.trim()] = row[key];
+            }
+            return cleanedRow;
+        });
+
         applyFilters(); 
     } catch (err) {
         console.error("Failed to fetch sheet data via API:", err);
