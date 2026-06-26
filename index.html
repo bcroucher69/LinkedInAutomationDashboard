@@ -632,23 +632,36 @@ function updateTable(data) {
 }
 
 // ==========================================
-// 3. GITHUB ACTIONS TRIGGER (SECURE DIRECT LINK)
+// 3. GITHUB ACTIONS TRIGGER (n8n WEBHOOK RELAY)
 // ==========================================
-function triggerCloudPipeline() {
-    // Replace these with your actual GitHub details
-    const GITHUB_USERNAME = "bcroucher69";
-    const REPO_NAME = "LinkedInAutomationDashboard";
+async function triggerCloudPipeline() {
+    // Paste your active n8n Webhook URL here
+    const N8N_WEBHOOK_URL = "https://sa1.altametrics.com/webhook/launch-outreach";
 
-    // This opens your secure GitHub Actions page in a new browser tab
-    const actionsUrl = `https://github.com/${GITHUB_USERNAME}/${REPO_NAME}/actions/workflows/outreach.yml`;
-    window.open(actionsUrl, '_blank');
-
-    // Show a helpful message on the dashboard
     const statusBox = document.getElementById('statusBox');
     statusBox.style.display = "block";
-    statusBox.style.background = "#e8f5e9";
-    statusBox.style.color = "#2e7d32";
-    statusBox.innerHTML = `<strong>✅ Redirecting to GitHub!</strong><br>To launch your outreach, click the <b>"Run workflow"</b> dropdown button on the page that just opened.`;
+    statusBox.style.background = "#e1f5fe";
+    statusBox.style.color = "#0288d1";
+    statusBox.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Sending ignition signal to n8n relay...`;
+
+    try {
+        // Ping n8n securely
+        const response = await fetch(N8N_WEBHOOK_URL, {
+            method: "POST"
+        });
+
+        if (response.ok) {
+            statusBox.style.background = "#e8f5e9";
+            statusBox.style.color = "#2e7d32";
+            statusBox.innerHTML = "<strong>✅ Success!</strong> Pipeline triggered securely. GitHub is now running your automation in the background.";
+        } else {
+            throw new Error(`Webhook failed with status: ${response.status}`);
+        }
+    } catch (err) {
+        statusBox.style.background = "#ffebee";
+        statusBox.style.color = "#c62828";
+        statusBox.innerHTML = `<strong>❌ Failed to trigger pipeline:</strong> ${err.message}`;
+    }
 }
 </script>
 
