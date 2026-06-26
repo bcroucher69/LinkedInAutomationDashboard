@@ -757,16 +757,24 @@ function startLivePolling(buttonId, originalBtnHTML, jobType) {
 
     let stableCount = 0;
     let lastRowCount = globalSheetData.length;
+    let hasDetectedChange = false; // Tracks if the scraper has started adding rows yet
 
-    // Check the Google Sheet every 10 seconds silently
+    // Check the Google Sheet every 10 seconds
     activePollInterval = setInterval(() => {
-        Papa.parse(SHEET_CSV_URL, {
+        // THE CACHE BUSTER: Forces the browser to grab fresh data instead of old saved data
+        const cacheBusterUrl = SHEET_CSV_URL + "&t=" + new Date().getTime();
+        
+        Papa.parse(cacheBusterUrl, {
             download: true,
             header: true,
             skipEmptyLines: true,
             transformHeader: function(header) { return header.trim(); },
             complete: function(results) {
                 const newData = results.data;
+                
+                // SAFETY CHECK: If Google sends a weird blank response, ignore it so the table doesn't disappear!
+                if (!newData || newData.length === 0) return; 
+
                 globalSheetData = newData;
                 applyFilters(); // Magically updates the UI with the fresh data
 
@@ -782,19 +790,29 @@ function startLivePolling(buttonId, originalBtnHTML, jobType) {
                     if (pendingCount === 0) isJobFinished = true;
                 } 
                 else if (jobType === 'scrape') {
-                    // It is finished if the total number of rows hasn't increased in 30 seconds
-                    if (newData.length === lastRowCount) {
-                        stableCount++;
-                        if (stableCount >= 3) isJobFinished = true;
-                    } else {
-                        stableCount = 0; // Reset counter because it found new rows!
+                    // It is finished if the scraper adds rows, and then stops adding them for 30 seconds
+                    if (newData.length > lastRowCount) {
+                        hasDetectedChange = true;
+                        stableCount = 0; // Reset counter because it's still actively adding rows
                         lastRowCount = newData.length;
+                    } else if (hasDetectedChange && newData.length === lastRowCount) {
+                        // Rows were added, but now it has stopped
+                        stableCount++;
+                        if (stableCount >= 3) isJobFinished = true; 
+                    } else if (!hasDetectedChange) {
+                        // Scraper is still booting up, keep waiting
+                        stableCount++;
+                        // Timeout safety: Give up if nothing happens for 3 minutes (18 tries)
+                        if (stableCount >= 18) isJobFinished = true; 
                     }
                 }
 
                 if (isJobFinished) {
                     stopLivePolling(buttonId, originalBtnHTML);
                 }
+            },
+            error: function() {
+                console.warn("Live poll skipped a beat due to a network blip. Will try again in 10s.");
             }
         });
     }, 10000); // 10,000 milliseconds = 10 seconds
