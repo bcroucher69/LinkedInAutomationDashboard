@@ -487,19 +487,16 @@
 
 </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 
 <script>
 // ==========================================
 // 1. CONFIGURATION
 // ==========================================
-const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vR_lEQFbR7U_UrIls01Bkr-iwyOjH9giCrzxpMK-6H-affxKUpk3B_ifGjF12o4ipyRXQXBETeR5GbV/pub?gid=1554697995&single=true&output=csv";
-
-const GITHUB_USERNAME = "bcroucher69";
-const REPO_NAME = "LinkedInAutomationDashboard";
+// Paste your new n8n GET Webhook URL here
+const N8N_DATA_API_URL = "https://sa1.altametrics.com/webhook/get-linkedin-data";
 
 // ==========================================
-// 2. DYNAMIC DATA LOADER & FILTERS
+// 2. DYNAMIC DATA LOADER & FILTERS (VIA API)
 // ==========================================
 let globalSheetData = []; 
 
@@ -507,24 +504,19 @@ document.addEventListener("DOMContentLoaded", () => {
     loadDashboardData();
 });
 
-function loadDashboardData() {
-    Papa.parse(SHEET_CSV_URL, {
-        download: true,
-        header: true,
-        skipEmptyLines: true,
-        transformHeader: function(header) {
-            return header.trim();
-        },
-        complete: function(results) {
-            globalSheetData = results.data;
-            applyFilters(); 
-        },
-        error: function(err) {
-            console.error("Failed to fetch sheet data:", err);
-            document.getElementById('statusBox').style.display = "block";
-            document.getElementById('statusBox').innerText = "❌ Failed to load live data from Google Sheets.";
-        }
-    });
+async function loadDashboardData() {
+    try {
+        const response = await fetch(N8N_DATA_API_URL);
+        if (!response.ok) throw new Error("API Network response was not ok");
+        
+        const data = await response.json();
+        globalSheetData = data;
+        applyFilters(); 
+    } catch (err) {
+        console.error("Failed to fetch sheet data via API:", err);
+        document.getElementById('statusBox').style.display = "block";
+        document.getElementById('statusBox').innerHTML = "❌ Failed to load live data from n8n API.";
+    }
 }
 
 function toggleCustomDate() {
@@ -677,6 +669,8 @@ function updateTable(data) {
     document.querySelector('.pagination-text').innerText = `Showing 1 to ${recentData.length} of ${data.length} filtered entries`;
 }
 
+// NOTE: SECTION 3 AND 4 GO HERE (Keep your existing triggerCloudPipeline and triggerScraperPipeline functions)
+
 // ==========================================
 // 3. GITHUB ACTIONS TRIGGER (OUTREACH)
 // ==========================================
@@ -759,98 +753,77 @@ async function triggerScraperPipeline() {
 }
 
 // ==========================================
-// 5. LIVE DATA POLLER (AUTO-REFRESH)
+// 5. LIVE DATA POLLER (API DRIVEN)
 // ==========================================
 let activePollInterval = null;
 
 function startLivePolling(buttonId, originalBtnHTML, jobType) {
-    // Clear any existing pollers just in case
     if (activePollInterval) clearInterval(activePollInterval);
 
     let stableCount = 0;
     let lastRowCount = globalSheetData.length;
-    let hasDetectedChange = false; // Tracks if the scraper has started adding rows yet
+    let hasDetectedChange = false; 
 
-    // Check the Google Sheet every 10 seconds
-    activePollInterval = setInterval(() => {
-        // THE CACHE BUSTER: Forces the browser to grab fresh data instead of old saved data
-        const cacheBusterUrl = SHEET_CSV_URL + "&t=" + new Date().getTime();
-        
-        Papa.parse(cacheBusterUrl, {
-            download: true,
-            header: true,
-            skipEmptyLines: true,
-            transformHeader: function(header) { return header.trim(); },
-            complete: function(results) {
-                const newData = results.data;
-                
-                // SAFETY CHECK: If Google sends a weird blank response, ignore it so the table doesn't disappear!
-                if (!newData || newData.length === 0) return; 
+    activePollInterval = setInterval(async () => {
+        try {
+            // Because we use an API now, there is zero browser caching of the Google Sheet!
+            const response = await fetch(N8N_DATA_API_URL);
+            if (!response.ok) return;
 
-                globalSheetData = newData;
-                applyFilters(); // Magically updates the UI with the fresh data
+            const newData = await response.json();
+            if (!newData || newData.length === 0) return; 
 
-                let isJobFinished = false;
+            globalSheetData = newData;
+            applyFilters(); 
 
-                if (jobType === 'outreach') {
-                    // It is finished if NO rows are left as "Pending" (blank status)
-                    const pendingCount = newData.filter(row => {
-                        const s = (row['Status'] || '').toLowerCase();
-                        return s === '' || s.includes('pending');
-                    }).length;
-                    
-                    if (pendingCount === 0) isJobFinished = true;
-                } 
-                else if (jobType === 'scrape') {
-                    // It is finished if the scraper adds rows, and then stops adding them for 30 seconds
-                    if (newData.length > lastRowCount) {
-                        hasDetectedChange = true;
-                        stableCount = 0; // Reset counter because it's still actively adding rows
-                        lastRowCount = newData.length;
-                    } else if (hasDetectedChange && newData.length === lastRowCount) {
-                        // Rows were added, but now it has stopped
-                        stableCount++;
-                        if (stableCount >= 3) isJobFinished = true; 
-                    } else if (!hasDetectedChange) {
-                        // Scraper is still booting up, keep waiting
-                        stableCount++;
-                        // Timeout safety: Give up if nothing happens for 3 minutes (18 tries)
-                        if (stableCount >= 18) isJobFinished = true; 
-                    }
+            let isJobFinished = false;
+
+            if (jobType === 'outreach') {
+                const pendingCount = newData.filter(row => {
+                    const s = (row['Status'] || '').toLowerCase();
+                    return s === '' || s.includes('pending');
+                }).length;
+                if (pendingCount === 0) isJobFinished = true;
+            } 
+            else if (jobType === 'scrape') {
+                if (newData.length > lastRowCount) {
+                    hasDetectedChange = true;
+                    stableCount = 0; 
+                    lastRowCount = newData.length;
+                } else if (hasDetectedChange && newData.length === lastRowCount) {
+                    stableCount++;
+                    if (stableCount >= 3) isJobFinished = true; 
+                } else if (!hasDetectedChange) {
+                    stableCount++;
+                    if (stableCount >= 18) isJobFinished = true; 
                 }
-
-                if (isJobFinished) {
-                    stopLivePolling(buttonId, originalBtnHTML);
-                }
-            },
-            error: function() {
-                console.warn("Live poll skipped a beat due to a network blip. Will try again in 10s.");
             }
-        });
-    }, 10000); // 10,000 milliseconds = 10 seconds
+
+            if (isJobFinished) {
+                stopLivePolling(buttonId, originalBtnHTML);
+            }
+        } catch (err) {
+            console.warn("Live poll skipped a beat. Will try again in 10s.");
+        }
+    }, 10000); 
 }
 
 function stopLivePolling(buttonId, originalBtnHTML) {
     clearInterval(activePollInterval);
     activePollInterval = null;
 
-    // Unlock the button
     const btn = document.getElementById(buttonId);
     if (btn) {
         btn.innerHTML = originalBtnHTML;
         btn.disabled = false;
     }
 
-    // Show final success banner
     const statusBox = document.getElementById('statusBox');
     statusBox.style.background = "#e8f5e9";
     statusBox.style.color = "#2e7d32";
     statusBox.innerHTML = `<strong>✅ Task Complete!</strong> Your live data is fully updated.`;
     
-    // Hide the banner after 5 seconds to keep the dashboard clean
-    setTimeout(() => {
-        statusBox.style.display = "none";
-    }, 5000);
+    setTimeout(() => { statusBox.style.display = "none"; }, 5000);
 }
 </script>
 
