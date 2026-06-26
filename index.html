@@ -632,41 +632,23 @@ function updateTable(data) {
 }
 
 // ==========================================
-// 3. GITHUB ACTIONS TRIGGER
+// 3. GITHUB ACTIONS TRIGGER (SECURE DIRECT LINK)
 // ==========================================
-async function triggerCloudPipeline() {
+function triggerCloudPipeline() {
+    // Replace these with your actual GitHub details
+    const GITHUB_USERNAME = "bcroucher69";
+    const REPO_NAME = "LinkedInAutomationDashboard";
+
+    // This opens your secure GitHub Actions page in a new browser tab
+    const actionsUrl = `https://github.com/${GITHUB_USERNAME}/${REPO_NAME}/actions/workflows/outreach.yml`;
+    window.open(actionsUrl, '_blank');
+
+    // Show a helpful message on the dashboard
     const statusBox = document.getElementById('statusBox');
     statusBox.style.display = "block";
-    statusBox.style.background = "#e1f5fe";
-    statusBox.style.color = "#0288d1";
-    statusBox.innerText = "⏳ Sending ignition signal to GitHub Actions API...";
-
-    try {
-        const response = await fetch(`https://api.github.com/repos/${GITHUB_USERNAME}/${REPO_NAME}/dispatches`, {
-            method: "POST",
-            headers: {
-                "Authorization": `Bearer ${GITHUB_TOKEN}`,
-                "Accept": "application/vnd.github+json",
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify({
-                event_type: "launch_outreach"
-            })
-        });
-
-        if (response.status === 204) {
-            statusBox.style.background = "#e8f5e9";
-            statusBox.style.color = "#2e7d32";
-            statusBox.innerHTML = "<strong>✅ Success!</strong> Cloud pipeline triggered. Refresh the page in a few minutes to see updated stats.";
-        } else {
-            const errText = await response.text();
-            throw new Error(errText || `Status code: ${response.status}`);
-        }
-    } catch (err) {
-        statusBox.style.background = "#ffebee";
-        statusBox.style.color = "#c62828";
-        statusBox.innerHTML = `<strong>❌ Failed to trigger pipeline:</strong> ${err.message}`;
-    }
+    statusBox.style.background = "#e8f5e9";
+    statusBox.style.color = "#2e7d32";
+    statusBox.innerHTML = `<strong>✅ Redirecting to GitHub!</strong><br>To launch your outreach, click the <b>"Run workflow"</b> dropdown button on the page that just opened.`;
 }
 </script>
 
