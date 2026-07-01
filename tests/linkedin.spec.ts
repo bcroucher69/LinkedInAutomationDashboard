@@ -52,6 +52,10 @@ test('Send LinkedIn Connection Requests from Google Sheet', async ({ page, conte
     console.log(`\nProcessing: ${profileUrl}`);
 
     try {
+      // THE FIX: Press the Escape key to force-close any stuck modals from the previous profile!
+      await page.keyboard.press('Escape');
+      await page.waitForTimeout(1000);
+
       await page.goto(profileUrl, { waitUntil: 'domcontentloaded' });
       await page.waitForTimeout(4000);
 
@@ -107,8 +111,9 @@ test('Send LinkedIn Connection Requests from Google Sheet', async ({ page, conte
       const delay = 15000 + Math.random() * 15000;
       await page.waitForTimeout(delay);
 
-    } catch (err) {
-      console.log(`✗ Error processing ${profileUrl}`);
+    } catch (err: any) {
+      // THE FIX: Log the exact error message so we know exactly why it failed
+      console.log(`✗ Error processing ${profileUrl}: ${err.message}`);
       row.set('Status', 'Failed - Error');
       row.set('Date Processed', new Date().toISOString());
       await row.save();
