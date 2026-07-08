@@ -705,7 +705,7 @@ async function triggerCloudPipeline() {
         if (response.ok) {
             statusBox.style.background = "#e8f5e9";
             statusBox.style.color = "#2e7d32";
-            statusBox.innerHTML = `<strong>✅ Outreach Started!</strong> Playwright is running in the cloud. Dashboard will auto-update every 60 seconds.`;
+            statusBox.innerHTML = `<strong>✅ Outreach Started!</strong> Your LinkedIn connection request campaign is now running. The dashboard will automatically refresh every 60 seconds.`;
         } else {
             throw new Error(`Webhook failed: ${response.status}`);
         }
